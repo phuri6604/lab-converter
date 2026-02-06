@@ -12,7 +12,7 @@ body {
 }
 textarea {
     width: 100%;
-    height: 280px;
+    height: 320px;
     font-family: monospace;
 }
 button {
@@ -34,55 +34,37 @@ pre {
 <h2>Lab Text → One-line Summary</h2>
 
 <textarea id="input" placeholder="Paste lab text here..."></textarea>
-
 <button onclick="convert()">Convert</button>
 
 <pre id="output"></pre>
 
 <script>
 const labMap = {
-    // CBC
     "Hemoglobin": "Hb",
     "Hematocrit": "Hct",
     "WBC Count": "WBC",
-    "Platelet": "Plt",
+    "Platelet Count": "Plt",
 
-    // Renal
     "Blood Urea Nitrogen": "BUN",
     "Creatinine": "Cr",
+    "eGFR": "eGFR",
 
-    // LFT
-    "Total Protein": "TP",
     "Albumin": "Alb",
-    "Globulin": "Glob",
-    "Direct Bilirubin": "DBili",
-    "Total Bilirubin": "TBili",
-    "Alkaline Phosphatase": "ALP",
-    "SGOT": "AST",
-    "AST": "AST",
-    "SGPT": "ALT",
-    "ALT": "ALT",
 
-    // Electrolyte / Mineral
-    "Sodium": "Na",
-    "Potassium": "K",
-    "Chloride": "Cl",
-    "TCO2": "TCO2",
     "Calcium": "Ca",
     "Phosphorus": "Phos",
     "Magnesium": "Mg",
 
-    // Coagulation
+    "Sodium": "Na",
+    "Potassium": "K",
+    "Chloride": "Cl",
+    "TCO2": "TCO2",
+
     "PT": "PT",
     "APTT": "aPTT",
-    "aPTT": "aPTT",
-    "INR": "INR",
-
-    // Other
-    "Lactate": "Lactate"
+    "INR": "INR"
 };
 
-// WBC differential storage
 const diffMap = {
     "Neutrophil": "N",
     "Lymphocyte": "L",
@@ -91,44 +73,55 @@ const diffMap = {
     "Basophil": "B"
 };
 
+function extractNumber(text) {
+    const m = text.match(/-?\d+(\.\d+)?/);
+    return m ? m[0] : null;
+}
+
 function convert() {
-    const text = document.getElementById("input").value;
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const lines = document.getElementById("input").value
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(Boolean);
 
     let result = [];
-    let wbcValue = null;
+    let wbc = null;
     let diff = {};
 
-    for (let i = 0; i < lines.length - 1; i++) {
-        const name = lines[i];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
 
         // 🔹 WBC differential
-        if (name.includes("WBC Differential")) {
+        if (line.includes("WBC Differential")) {
             for (const k in diffMap) {
-                if (name.includes(k)) {
-                    const m = lines[i + 1].match(/(\d+(\.\d+)?)/);
-                    if (m) diff[diffMap[k]] = m[1];
+                if (line.includes(k)) {
+                    const val = extractNumber(line);
+                    if (val) diff[diffMap[k]] = val;
                 }
             }
             continue;
         }
 
-        // 🔹 Other labs
-        const key = Object.keys(labMap).find(k => name.includes(k));
-        if (key) {
-            const m = lines[i + 1].match(/-?\d+(\.\d+)?/);
-            if (m) {
+        // 🔹 Normal labs
+        for (const key in labMap) {
+            if (line.includes(key)) {
+                const val =
+                    extractNumber(line) ||
+                    (lines[i + 1] ? extractNumber(lines[i + 1]) : null);
+
+                if (!val) continue;
+
                 if (labMap[key] === "WBC") {
-                    wbcValue = m[0];
+                    wbc = val;
                 } else {
-                    result.push(`${labMap[key]} ${m[0]}`);
+                    result.push(`${labMap[key]} ${val}`);
                 }
             }
         }
     }
 
-    // ⭐ Combine WBC + differential
-    if (wbcValue) {
+    // 🔹 Combine WBC + diff
+    if (wbc) {
         const order = ["N", "L", "M", "E", "B"];
         const diffText = order
             .filter(k => diff[k])
@@ -136,13 +129,11 @@ function convert() {
             .join(", ");
 
         result.unshift(
-            diffText
-                ? `WBC ${wbcValue} (${diffText})`
-                : `WBC ${wbcValue}`
+            diffText ? `WBC ${wbc} (${diffText})` : `WBC ${wbc}`
         );
     }
 
-    // ⭐ INR ต้องมี PT
+    // 🔹 INR ต้องมี PT
     const hasPT = result.some(r => r.startsWith("PT "));
     if (!hasPT) {
         result = result.filter(r => !r.startsWith("INR "));
