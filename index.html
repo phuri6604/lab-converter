@@ -3,189 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Converter (TCO2 & WBC Fixed)</title>
+    <title>Lab Converter Pro (Ultra Precision)</title>
     <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            max-width: 950px; 
-            margin: 20px auto; 
-            padding: 0 20px;
-            color: #333; 
-        }
-        h2 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        textarea { 
-            width: 100%; 
-            height: 350px; 
-            font-family: 'Courier New', monospace; 
-            padding: 15px; 
-            border: 1px solid #ccc; 
-            border-radius: 8px; 
-            box-sizing: border-box;
-            background-color: #fafafa;
-        }
-        button { 
-            padding: 12px 28px; 
-            font-size: 16px; 
-            margin-top: 15px; 
-            cursor: pointer; 
-            background-color: #007bff; 
-            color: white; 
-            border: none; 
-            border-radius: 6px; 
-            font-weight: bold;
-        }
-        button:hover { background-color: #0056b3; }
-        pre { 
-            background: #f8f9fa; 
-            padding: 20px; 
-            margin-top: 20px; 
-            white-space: pre-wrap; 
-            border-radius: 8px; 
-            border-left: 5px solid #28a745;
-            font-size: 16px; 
-            font-weight: 500;
-        }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; color: #333; line-height: 1.5; }
+        h2 { color: #1a73e8; border-bottom: 2px solid #e8eaed; padding-bottom: 10px; }
+        textarea { width: 100%; height: 300px; font-family: 'Consolas', monospace; padding: 15px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; background: #fdfdfd; }
+        textarea:focus { border-color: #1a73e8; outline: none; }
+        button { padding: 14px 30px; font-size: 16px; margin-top: 15px; cursor: pointer; background: #1a73e8; color: white; border: none; border-radius: 6px; font-weight: bold; width: 100%; transition: 0.2s; }
+        button:hover { background: #1557b0; }
+        pre { background: #f1f3f4; padding: 20px; margin-top: 20px; white-space: pre-wrap; border-radius: 8px; border-left: 6px solid #1a73e8; font-size: 16px; font-weight: 500; color: #202124; }
+        .label-hint { font-size: 0.85em; color: #666; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <h2>Lab Text → One-line Summary</h2>
-<textarea id="input" placeholder="Paste lab results here..."></textarea>
-<button onclick="convert()">Convert</button>
+<div class="label-hint">วางผลแล็บทั้งหมดลงในช่องด้านล่าง (รองรับ CBC, Chem, Electrolyte, LFT, UA, Coag)</div>
+<textarea id="input" placeholder="ตัวอย่างผลแล็บ:
+WBC Count 5,030
+TCO2 17 (21 - 32)
+Sodium 141 (135 - 145)
+Protein 1+
+..."></textarea>
+
+<button onclick="convert()">Convert to Summary</button>
 
 <pre id="output"></pre>
 
 <script>
-const labMap = {
-    "Hemoglobin": "Hb", "Hematocrit": "Hct", "WBC": "WBC", "Platelet": "Plt",
-    "Blood Urea Nitrogen": "BUN", "Creatinine": "Cr", "eGFR": "eGFR",
-    "Sodium": "Na", "Potassium": "K", "Chloride": "Cl", "TCO2": "TCO2", "CO2": "TCO2",
-    "Total Protein": "Prot", "Albumin": "Alb", "Globulin": "Glob",
-    "Direct Bilirubin": "DB", "Total Bilirubin": "TB",
-    "Alkaline Phosphatase": "ALP", "SGOT": "AST", "AST": "AST", "SGPT": "ALT", "ALT": "ALT",
-    "Spgr": "sp.gr.", "pH": "pH", "Protein": "UA Prot", "Glucose": "UA Glu", "Ketone": "UA Ketone", "Blood": "UA Blood",
-    "PT": "PT", "APTT": "aPTT", "INR": "INR"
-};
-
-const diffMap = {
-    "Neutrophil": "N", "Lymphocyte": "L", "Monocyte": "M", "Eosinophil": "E", "Basophil": "B"
-};
-
-function extractValue(text) {
-    // 1. ตัดส่วนที่เป็นค่าปกติในวงเล็บออกเด็ดขาด (แก้ปัญหา TCO2 ดึงเลข 2 จาก (21-32))
-    let cleanText = text.split('(')[0];
-    
-    // 2. ถ้ามีคำว่า Neg/Negative (กรณี UA)
-    if (cleanText.toLowerCase().includes("neg")) return "neg";
-
-    // 3. ลบ Comma (,) และเครื่องหมายลบนำหน้าออก
-    cleanText = cleanText.replace(/,/g, '').replace(/^-/, '').trim();
-
-    // 4. ดึงเฉพาะตัวเลขตัวแรกที่เจอหลังจากชื่อ Lab (รองรับทศนิยม และ 1+)
-    const m = cleanText.match(/\d+(\.\d+)?(\+)?/);
-    return m ? m[0] : null;
-}
-
 function convert() {
-    const rawText = document.getElementById("input").value;
-    const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    let text = document.getElementById("input").value;
 
-    let results = new Map();
-    let diff = {};
-    let wbcVal = null;
+    // 1. [CRITICAL FIX] ลบช่วงค่าปกติ (Reference Range) ออกไปให้หมดก่อน
+    // ลบทุกอย่างที่อยู่ใน ( ) และ [ ] เพื่อไม่ให้ตัวเลขข้างใน (เช่น 21-32) มาหลอกโปรแกรม
+    text = text.replace(/\([^)]*\)/g, ' '); 
+    text = text.replace(/\[[^\]]*\]/g, ' ');
+    
+    // 2. ลบ Comma ในตัวเลข เช่น 5,030 -> 5030
+    text = text.replace(/,/g, '');
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    const results = {};
+    const diff = {};
 
-        // 1. ตรวจสอบ WBC Differential
-        if (line.includes("Differential") || Object.keys(diffMap).some(k => line.includes(k))) {
-            if (!line.includes("NRC")) { 
-                for (const k in diffMap) {
-                    if (line.includes(k)) {
-                        const val = extractValue(line);
-                        if (val) diff[diffMap[k]] = val;
-                    }
-                }
-            }
-        }
-
-        // 2. ตรวจสอบ Labs ทั่วไป
-        for (const key in labMap) {
-            // ใช้ regex แบบ word boundary (\b) เพื่อแยก CO2 กับ TCO2 ออกจากกัน
-            const isMatch = new RegExp("\\b" + key + "\\b", "i").test(line) || line.includes(key);
-
-            if (isMatch) {
-                // กรองกรณีชื่อซ้ำซ้อน
-                if (key === "WBC" && (line.includes("Differential") || line.includes("NRC"))) continue;
-                if (key === "Creatinine" && line.includes("Urine")) continue;
-                if (key === "CO2" && line.includes("TCO2")) continue;
-                
-                // แยกแยะ Protein เลือด (Total Protein) กับ UA Protein
-                const isUA = line.includes("Spgr") || line.startsWith("- Protein") || line.includes("UA");
-                if (key === "Protein") {
-                    if (labMap[key] === "UA Prot" && !isUA) continue;
-                    if (labMap[key] === "Prot" && isUA) continue;
-                }
-
-                let val = extractValue(line);
-
-                // กรณีค่าอยู่บรรทัดถัดไป
-                if (!val && lines[i+1]) {
-                    const nextLine = lines[i+1];
-                    const nextVal = extractValue(nextLine);
-                    // บรรทัดถัดไปต้องไม่เป็นชื่อ Lab อื่น
-                    const isAnotherLab = Object.keys(labMap).some(k => nextLine.includes(k));
-                    if (nextVal && !isAnotherLab) val = nextVal;
-                }
-
-                if (val) {
-                    const label = labMap[key];
-                    if (label === "WBC") {
-                        let num = parseFloat(val.replace(/[+,]/g, ''));
-                        // Scale WBC: < 100 (เช่น 5.0) -> 5000 | 5030 -> 5030
-                        if (num < 100) num *= 1000;
-                        wbcVal = Math.round(num);
-                    } else {
-                        if (!results.has(label)) {
-                            results.set(label, val);
-                        }
-                    }
-                }
-            }
+    // --- ส่วนที่ 1: ดึงค่า Differential (N, L, M, E, B) ---
+    const diffMapping = { "Neutrophil": "N", "Lymphocyte": "L", "Monocyte": "M", "Eosinophil": "E", "Basophil": "B" };
+    for (let key in diffMapping) {
+        // หาคำว่า Neutrophil แล้วเอาเลขที่ตามหลังมา (แต่ต้องไม่ใช่ NRC)
+        const regex = new RegExp(key + "[^0-9]*(\\d+)", "i");
+        const match = text.match(regex);
+        if (match && !text.substring(match.index - 20, match.index).includes("NRC")) {
+            diff[diffMapping[key]] = match[1];
         }
     }
 
-    // --- จัดรูปแบบผลลัพธ์ ---
-    let finalOutput = [];
-
-    // WBC + Diff
-    if (wbcVal) {
-        const order = ["N", "L", "M", "E", "B"];
-        const diffParts = order.filter(k => diff[k]).map(k => `${k}${diff[k]}%`);
-        const diffText = diffParts.join(", ");
-        finalOutput.push(diffText ? `WBC ${wbcVal} (${diffText})` : `WBC ${wbcVal}`);
-    }
-
-    // ลำดับการแสดงผลมาตรฐาน
-    const displayOrder = [
-        "Hb", "Hct", "Plt", "BUN", "Cr", "eGFR",
-        "Na", "K", "Cl", "TCO2", "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
-        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", "PT", "aPTT", "INR"
+    // --- ส่วนที่ 2: ดึงค่า Lab หลัก (ใช้ Regex ค้นหาตัวเลขที่ตามหลังชื่อแล็บ) ---
+    const labDefinitions = [
+        { key: "Hemoglobin", label: "Hb" },
+        { key: "Hematocrit", label: "Hct" },
+        { key: "WBC", label: "WBC" },
+        { key: "Platelet", label: "Plt" },
+        { key: "Blood Urea Nitrogen", label: "BUN" },
+        { key: "Creatinine", label: "Cr" },
+        { key: "eGFR", label: "eGFR" },
+        { key: "Sodium", label: "Na" },
+        { key: "Potassium", label: "K" },
+        { key: "Chloride", label: "Cl" },
+        { key: "TCO2", label: "TCO2" },
+        { key: "Total Protein", label: "Prot" },
+        { key: "Albumin", label: "Alb" },
+        { key: "Globulin", label: "Glob" },
+        { key: "Direct Bilirubin", label: "DB" },
+        { key: "Total Bilirubin", label: "TB" },
+        { key: "Alkaline Phosphatase", label: "ALP" },
+        { key: "SGOT", label: "AST" },
+        { key: "AST", label: "AST" },
+        { key: "SGPT", label: "ALT" },
+        { key: "ALT", label: "ALT" },
+        { key: "Spgr", label: "sp.gr." },
+        { key: "pH", label: "pH" },
+        { key: "PT", label: "PT" },
+        { key: "APTT", label: "aPTT" },
+        { key: "INR", label: "INR" }
     ];
 
-    displayOrder.forEach(label => {
-        if (results.has(label)) {
-            finalOutput.push(`${label} ${results.get(label)}`);
+    labDefinitions.forEach(item => {
+        // หาชื่อแล็บ แล้วตามด้วยตัวเลข (หรือเลขติดทศนิยม)
+        // \b เพื่อให้หาคำนั้นเป๊ะๆ ไม่ให้ CO2 ไปทับ TCO2
+        const regex = new RegExp("\\b" + item.key + "\\b[^0-9]*(\\d+\\.?\\d*)", "i");
+        const match = text.match(regex);
+        
+        if (match) {
+            let val = match[1];
+            // จัดการ WBC: ถ้ามาเป็น 5.03 -> 5030 | ถ้ามา 5030 -> 5030
+            if (item.label === "WBC") {
+                let num = parseFloat(val);
+                if (num < 100) num *= 1000;
+                results[item.label] = Math.round(num);
+            } else {
+                results[item.label] = val;
+            }
         }
     });
 
-    // เงื่อนไข: INR ต้องมี PT
-    let finalStr = finalOutput.join(", ");
-    if (!results.has("PT")) {
+    // --- ส่วนที่ 3: ดึงค่า UA (Protein, Glu, Ketone, Blood) เพราะมีค่าเป็น 1+, 2+, Neg ---
+    const uaKeys = { "Protein": "UA Prot", "Glucose": "UA Glu", "Ketone": "UA Ketone", "Blood": "UA Blood" };
+    for (let key in uaKeys) {
+        // หาบรรทัดที่มี UA หรือบรรทัดที่ตามหลัง Spgr/pH
+        const regex = new RegExp(key + "[^a-zA-Z0-9]*(Neg|neg|Positive|\\d\\+)", "i");
+        const match = text.match(regex);
+        if (match) {
+            results[uaKeys[key]] = match[1].toLowerCase() === "neg" ? "neg" : match[1];
+        }
+    }
+
+    // --- ส่วนที่ 4: จัดเรียงลำดับการแสดงผล ---
+    let outputArr = [];
+
+    // WBC & Diff ก่อน
+    if (results["WBC"]) {
+        const dOrder = ["N", "L", "M", "E", "B"];
+        const dStr = dOrder.filter(k => diff[k]).map(k => k + diff[k] + "%").join(", ");
+        outputArr.push(dStr ? `WBC ${results["WBC"]} (${dStr})` : `WBC ${results["WBC"]}`);
+    }
+
+    const order = [
+        "Hb", "Hct", "Plt", "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2",
+        "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
+        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", "PT", "aPTT", "INR"
+    ];
+
+    order.forEach(lab => {
+        if (results[lab] && lab !== "WBC") {
+            outputArr.push(`${lab} ${results[lab]}`);
+        }
+    });
+
+    // เงื่อนไข: INR ต้องมี PT ถึงจะแสดง
+    let finalStr = outputArr.join(", ");
+    if (!results["PT"]) {
         finalStr = finalStr.replace(/INR [\d.]+(, )?/, "").replace(/, $/, "");
     }
 
-    document.getElementById("output").textContent = finalStr || "No results found.";
+    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่ต้องการแปลง กรุณาตรวจสอบข้อมูลนำเข้า";
 }
 </script>
 
