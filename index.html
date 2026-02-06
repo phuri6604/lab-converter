@@ -1,43 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Lab Converter (UA & LFT Support)</title>
-
-<style>
-    body { font-family: Arial, sans-serif; max-width: 950px; margin: 20px auto; color: #333; }
-    textarea { width: 100%; height: 350px; font-family: monospace; padding: 12px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-    button { padding: 12px 24px; font-size: 16px; margin-top: 10px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 5px; font-weight: bold; }
-    button:hover { background-color: #218838; }
-    pre { background: #f8f9fa; padding: 15px; margin-top: 15px; white-space: pre-wrap; border-radius: 5px; border: 1px solid #ddd; font-size: 15px; line-height: 1.6; min-height: 50px; }
-    h2 { color: #2c3e50; }
-</style>
-</head>
-
-<body>
-
-<h2>Lab Text → One-line Summary</h2>
-
-<textarea id="input" placeholder="วางผล Lab ตรงนี้..."></textarea>
-<button onclick="convert()">Convert</button>
-
-<pre id="output"></pre>
-
 <script>
 const labMap = {
-    // CBC
     "Hemoglobin": "Hb", "Hematocrit": "Hct", "WBC": "WBC", "Platelet": "Plt",
-    // Chemistry / Electrolyte
     "Blood Urea Nitrogen": "BUN", "Creatinine": "Cr", "eGFR": "eGFR",
     "Sodium": "Na", "Potassium": "K", "Chloride": "Cl", "TCO2": "TCO2", "CO2": "TCO2",
-    "Calcium": "Ca", "Phosphorus": "Phos", "Magnesium": "Mg",
-    // LFT
     "Total Protein": "Prot", "Albumin": "Alb", "Globulin": "Glob",
     "Direct Bilirubin": "DB", "Total Bilirubin": "TB",
     "Alkaline Phosphatase": "ALP", "SGOT": "AST", "AST": "AST", "SGPT": "ALT", "ALT": "ALT",
-    // UA (ดึงเฉพาะค่าสำคัญ)
     "Spgr": "sp.gr.", "pH": "pH", "Protein": "UA Prot", "Glucose": "UA Glu", "Ketone": "UA Ketone", "Blood": "UA Blood",
-    // Coag
     "PT": "PT", "APTT": "aPTT", "INR": "INR"
 };
 
@@ -45,13 +14,17 @@ const diffMap = {
     "Neutrophil": "N", "Lymphocyte": "L", "Monocyte": "M", "Eosinophil": "E", "Basophil": "B"
 };
 
-// ฟังก์ชันดึงตัวเลขที่อยู่ข้างหน้า (ไม่ใช่ในวงเล็บค่าปกติ)
 function extractValue(text) {
-    // ตัดเอาเฉพาะข้อความก่อนเจอวงเล็บ ( ) เพื่อเลี่ยงค่าปกติ
-    const cleanText = text.split('(')[0];
+    // 1. ตัดส่วนที่เป็นค่าปกติในวงเล็บออก
+    let cleanText = text.split('(')[0];
     
-    // ค้นหาตัวเลข (รวมถึง 1+, 2+ หรือ Neg ใน UA)
-    if (cleanText.includes("Neg")) return "neg";
+    // 2. ถ้าเป็น UA และมีคำว่า Neg/Negative
+    if (cleanText.toLowerCase().includes("neg")) return "neg";
+
+    // 3. จัดการตัวเลข: ลบ Comma (,) ออกก่อน เช่น 5,030 -> 5030
+    cleanText = cleanText.replace(/,/g, '');
+
+    // 4. ค้นหาตัวเลข หรือตัวเลขที่มีเครื่องหมายบวก (สำหรับ UA)
     const m = cleanText.match(/\d+(\.\d+)?(\+)?/);
     return m ? m[0] : null;
 }
@@ -67,22 +40,24 @@ function convert() {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // 1. ตรวจสอบ WBC Differential
-        for (const k in diffMap) {
-            if (line.includes(k)) {
-                const val = extractValue(line);
-                if (val) diff[diffMap[k]] = val;
+        // 1. ตรวจสอบ WBC Differential (ข้ามบรรทัด NRC / 100 WBC)
+        if (line.includes("WBC Differential") || Object.keys(diffMap).some(k => line.includes(k))) {
+            if (!line.includes("NRC")) { // ป้องกันเลข 1 จาก NRC
+                for (const k in diffMap) {
+                    if (line.includes(k)) {
+                        const val = extractValue(line);
+                        if (val) diff[diffMap[k]] = val;
+                    }
+                }
             }
         }
 
         // 2. ตรวจสอบ Labs ทั่วไป
         for (const key in labMap) {
             if (line.includes(key)) {
-                // ป้องกัน WBC ชนกับหัวข้อ Differential
-                if (key === "WBC" && line.includes("Differential")) continue;
-                // ป้องกัน Cr ชนกับ Urine Cr
+                // ป้องกัน WBC ชนกับหัวข้อ Differential หรือ NRC
+                if (key === "WBC" && (line.includes("Differential") || line.includes("NRC"))) continue;
                 if (key === "Creatinine" && line.includes("Urine")) continue;
-                // ป้องกัน Protein (LFT) ชนกับ Protein (UA)
                 if (key === "Protein" && !line.startsWith("Protein") && !line.includes("- Protein")) continue;
 
                 let val = extractValue(line);
@@ -95,7 +70,9 @@ function convert() {
                 if (val) {
                     const label = labMap[key];
                     if (label === "WBC") {
-                        let num = parseFloat(val);
+                        // ลบเครื่องหมายบวกหรือ comma ออกก่อนแปลงเป็นตัวเลข
+                        let num = parseFloat(val.replace(/[+,]/g, ''));
+                        // Logic เดิม: ถ้ามาเป็น 5.0 -> 5000, ถ้ามาเป็น 5030 -> 5030
                         if (num < 100) num *= 1000;
                         wbcVal = Math.round(num);
                     } else {
@@ -108,25 +85,21 @@ function convert() {
         }
     }
 
-    // --- จัดการการแสดงผล ---
+    // --- ส่วนการแสดงผล ---
     let finalOutput = [];
 
     // WBC & Diff
     if (wbcVal) {
         const order = ["N", "L", "M", "E", "B"];
-        const diffText = order.filter(k => diff[k]).map(k => `${k}${diff[k]}%`).join(", ");
+        const diffParts = order.filter(k => diff[k]).map(k => `${k}${diff[k]}%`);
+        const diffText = diffParts.join(", ");
         finalOutput.push(diffText ? `WBC ${wbcVal} (${diffText})` : `WBC ${wbcVal}`);
     }
 
-    // เรียงลำดับแสดงผลตามกลุ่ม
     const displayOrder = [
-        "Hb", "Hct", "Plt", 
-        "BUN", "Cr", "eGFR",
-        "Na", "K", "Cl", "TCO2",
-        "Ca", "Phos", "Mg",
-        "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT", // LFT
-        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", // UA
-        "PT", "aPTT", "INR"
+        "Hb", "Hct", "Plt", "BUN", "Cr", "eGFR",
+        "Na", "K", "Cl", "TCO2", "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
+        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", "PT", "aPTT", "INR"
     ];
 
     displayOrder.forEach(label => {
@@ -135,15 +108,7 @@ function convert() {
         }
     });
 
-    // เงื่อนไข INR ต้องมี PT
-    let finalStr = finalOutput.join(", ");
-    if (!results.has("PT")) {
-        finalStr = finalStr.replace(/INR [\d.]+(, )?/, "");
-    }
-
-    document.getElementById("output").textContent = finalStr;
+    // แสดงผลด้วย comma separator
+    document.getElementById("output").textContent = finalOutput.join(", ");
 }
 </script>
-
-</body>
-</html>
