@@ -14,17 +14,31 @@ textarea {
     width: 100%;
     height: 320px;
     font-family: monospace;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
 }
 button {
     padding: 10px 18px;
     font-size: 16px;
     margin-top: 10px;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+button:hover {
+    background-color: #0056b3;
 }
 pre {
     background: #f5f5f5;
-    padding: 12px;
+    padding: 15px;
     margin-top: 15px;
     white-space: pre-wrap;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    font-size: 14px;
 }
 </style>
 </head>
@@ -39,11 +53,13 @@ pre {
 <pre id="output"></pre>
 
 <script>
+// Key = Text to find, Value = Output Label
+// Updated keys to be shorter/more common (e.g., "WBC" instead of "WBC Count")
 const labMap = {
     "Hemoglobin": "Hb",
     "Hematocrit": "Hct",
-    "WBC Count": "WBC",
-    "Platelet Count": "Plt",
+    "WBC": "WBC", 
+    "Platelet": "Plt", // Covers "Platelet" and "Platelet Count"
 
     "Blood Urea Nitrogen": "BUN",
     "Creatinine": "Cr",
@@ -58,13 +74,14 @@ const labMap = {
     "Sodium": "Na",
     "Potassium": "K",
     "Chloride": "Cl",
-    "TCO2": "TCO2",
+    "CO2": "TCO2", // Covers "Total CO2" or just "CO2"
 
     "PT": "PT",
     "APTT": "aPTT",
     "INR": "INR"
 };
 
+// Differential Map
 const diffMap = {
     "Neutrophil": "N",
     "Lymphocyte": "L",
@@ -74,72 +91,112 @@ const diffMap = {
 };
 
 function extractNumber(text) {
+    // Looks for a number (integer or float)
     const m = text.match(/-?\d+(\.\d+)?/);
     return m ? m[0] : null;
 }
 
 function convert() {
-    const lines = document.getElementById("input").value
+    const rawText = document.getElementById("input").value;
+    const lines = rawText
         .split(/\r?\n/)
         .map(l => l.trim())
         .filter(Boolean);
 
-    let result = [];
-    let wbc = null;
+    // Use a Map to store results to avoid duplicates
+    let results = new Map();
     let diff = {};
+    let wbcVal = null;
 
+    // We process the lines
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // 🔹 WBC differential
-        if (line.includes("WBC Differential")) {
-            for (const k in diffMap) {
-                if (line.includes(k)) {
-                    const val = extractNumber(line);
-                    if (val) diff[diffMap[k]] = val;
+        // 1. Check for Differential (Scan every line for Neutrophil, etc.)
+        let isDiffLine = false;
+        for (const k in diffMap) {
+            if (line.includes(k)) {
+                const val = extractNumber(line);
+                if (val) {
+                    diff[diffMap[k]] = val;
+                    isDiffLine = true;
                 }
             }
-            continue;
         }
+        if (isDiffLine) continue; // Don't process as a main lab if it's a diff line
 
-        // 🔹 Normal labs
+        // 2. Check for Main Labs
         for (const key in labMap) {
+            // Check if line contains the key (e.g. "Hemoglobin")
             if (line.includes(key)) {
-                const val =
-                    extractNumber(line) ||
-                    (lines[i + 1] ? extractNumber(lines[i + 1]) : null);
+                
+                // Avoid matching "Urine Creatinine" if we want "Creatinine"
+                // Simple safeguard: if line has "Urine" and key is "Creatinine", skip
+                if (key === "Creatinine" && line.includes("Urine")) continue;
 
-                if (!val) continue;
+                let val = extractNumber(line);
 
-                if (labMap[key] === "WBC") {
-                    wbc = val;
-                } else {
-                    result.push(`${labMap[key]} ${val}`);
+                // If no number on this line, check the NEXT line
+                if (!val && lines[i + 1]) {
+                    // Only grab next line if it looks like a number and NOT another text header
+                    const nextLine = lines[i + 1];
+                    const nextVal = extractNumber(nextLine);
+                    // Heuristic: If next line has a number and NO letters (except units), grab it
+                    if (nextVal) {
+                        val = nextVal;
+                    }
+                }
+
+                if (val) {
+                    const label = labMap[key];
+                    
+                    // Store WBC separately for formatting later
+                    if (label === "WBC") {
+                        wbcVal = val;
+                    } else {
+                        // Only add if not already added (First find priority)
+                        if (!results.has(label)) {
+                            results.set(label, val);
+                        }
+                    }
                 }
             }
         }
     }
 
-    // 🔹 Combine WBC + diff
-    if (wbc) {
+    // --- Formatting Output ---
+
+    let finalOutput = [];
+
+    // 1. Format WBC + Diff
+    if (wbcVal) {
         const order = ["N", "L", "M", "E", "B"];
         const diffText = order
             .filter(k => diff[k])
-            .map(k => `${k}${diff[k]}%`)
+            .map(k => `${k}${diff[k]}%`) // Removed decimal check, assumes raw input is fine
             .join(", ");
 
-        result.unshift(
-            diffText ? `WBC ${wbc} (${diffText})` : `WBC ${wbc}`
-        );
+        finalOutput.push(diffText ? `WBC ${wbcVal} (${diffText})` : `WBC ${wbcVal}`);
     }
 
-    // 🔹 INR ต้องมี PT
-    const hasPT = result.some(r => r.startsWith("PT "));
+    // 2. Add Standard Labs (in the order defined in labMap)
+    // We loop through the original map keys to maintain standard medical ordering
+    const definedOrder = new Set(Object.values(labMap));
+    definedOrder.forEach(label => {
+        if (label !== "WBC" && results.has(label)) {
+             finalOutput.push(`${label} ${results.get(label)}`);
+        }
+    });
+
+    // 3. PT/INR Logic (INR requires PT)
+    // Check if we have PT in our results
+    const hasPT = results.has("PT");
     if (!hasPT) {
-        result = result.filter(r => !r.startsWith("INR "));
+        // Filter out INR if it exists in the array
+        finalOutput = finalOutput.filter(str => !str.startsWith("INR "));
     }
 
-    document.getElementById("output").textContent = result.join(" ");
+    document.getElementById("output").textContent = finalOutput.join(" ");
 }
 </script>
 
