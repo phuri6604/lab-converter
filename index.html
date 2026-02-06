@@ -2,27 +2,76 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Lab Converter (UA & LFT Support)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lab Converter Pro</title>
 
 <style>
-    body { font-family: Arial, sans-serif; max-width: 950px; margin: 20px auto; color: #333; }
-    textarea { width: 100%; height: 350px; font-family: monospace; padding: 12px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-    button { padding: 12px 24px; font-size: 16px; margin-top: 10px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 5px; font-weight: bold; }
-    button:hover { background-color: #218838; }
-    pre { background: #f8f9fa; padding: 15px; margin-top: 15px; white-space: pre-wrap; border-radius: 5px; border: 1px solid #ddd; font-size: 15px; line-height: 1.6; min-height: 50px; }
-    h2 { color: #2c3e50; }
+    body { 
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        max-width: 900px; 
+        margin: 20px auto; 
+        padding: 0 20px;
+        color: #333; 
+        line-height: 1.6;
+    }
+    h2 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    textarea { 
+        width: 100%; 
+        height: 300px; 
+        font-family: 'Courier New', monospace; 
+        padding: 15px; 
+        border: 1px solid #ccc; 
+        border-radius: 8px; 
+        box-sizing: border-box;
+        font-size: 14px;
+        background-color: #fafafa;
+    }
+    button { 
+        padding: 12px 28px; 
+        font-size: 16px; 
+        margin-top: 15px; 
+        cursor: pointer; 
+        background-color: #007bff; 
+        color: white; 
+        border: none; 
+        border-radius: 6px; 
+        font-weight: bold;
+        transition: background 0.2s;
+    }
+    button:hover { background-color: #0056b3; }
+    pre { 
+        background: #e9ecef; 
+        padding: 20px; 
+        margin-top: 20px; 
+        white-space: pre-wrap; 
+        border-radius: 8px; 
+        border-left: 5px solid #007bff;
+        font-size: 16px; 
+        font-weight: 500;
+        min-height: 40px;
+    }
+    .instruction { font-size: 0.9em; color: #666; margin-bottom: 10px; }
 </style>
 </head>
 
 <body>
 
 <h2>Lab Text → One-line Summary</h2>
+<p class="instruction">วางผลแล็บลงในช่องว่าง แล้วกดปุ่ม Convert เพื่อสรุปเป็นบรรทัดเดียว</p>
 
-<textarea id="input" placeholder="วางผล Lab ตรงนี้..."></textarea>
+<textarea id="input" placeholder="ตัวอย่าง:
+Hemoglobin 8.6
+WBC Count 5,030
+TCO2 17 (21-32)
+Protein 1+
+..."></textarea>
+
 <button onclick="convert()">Convert</button>
 
 <pre id="output"></pre>
+
 <script>
+// แมพชื่อแล็บเต็ม -> ชื่อย่อที่ต้องการแสดง
 const labMap = {
     "Hemoglobin": "Hb", "Hematocrit": "Hct", "WBC": "WBC", "Platelet": "Plt",
     "Blood Urea Nitrogen": "BUN", "Creatinine": "Cr", "eGFR": "eGFR",
@@ -34,27 +83,33 @@ const labMap = {
     "PT": "PT", "APTT": "aPTT", "INR": "INR"
 };
 
+// แมพตัวดึงค่า Differential
 const diffMap = {
     "Neutrophil": "N", "Lymphocyte": "L", "Monocyte": "M", "Eosinophil": "E", "Basophil": "B"
 };
 
+/**
+ * ฟังก์ชันดึงเฉพาะตัวเลขผลแล็บ
+ * แก้ไขปัญหาการดึงเลขผิดบรรทัด และการดึงเลขจากค่าปกติในวงเล็บ
+ */
 function extractValue(text) {
-    // 1. ตัดส่วนที่เป็นค่าปกติในวงเล็บออก
+    // 1. ตัดส่วนที่เป็นค่าปกติในวงเล็บออกก่อน (ป้องกันการดึงเลข 2 จาก (21-32) ในกรณี TCO2)
     let cleanText = text.split('(')[0];
     
-    // 2. ถ้าเป็น UA และมีคำว่า Neg/Negative
+    // 2. ถ้าเป็นผล UA ที่มีคำว่า Neg
     if (cleanText.toLowerCase().includes("neg")) return "neg";
 
-    // 3. จัดการตัวเลข: ลบ Comma (,) ออกก่อน เช่น 5,030 -> 5030
+    // 3. ลบ Comma (,) ออกเพื่อให้เลขหลักพัน (เช่น 5,030) กลายเป็นตัวเลขต่อเนื่อง
     cleanText = cleanText.replace(/,/g, '');
 
-    // 4. ค้นหาตัวเลข หรือตัวเลขที่มีเครื่องหมายบวก (สำหรับ UA)
+    // 4. ดึงตัวเลข หรือเลขที่มีเครื่องหมายบวก (สำหรับ UA 1+, 2+)
     const m = cleanText.match(/\d+(\.\d+)?(\+)?/);
     return m ? m[0] : null;
 }
 
 function convert() {
     const rawText = document.getElementById("input").value;
+    // แยกบรรทัดและลบช่องว่าง
     const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
     let results = new Map();
@@ -64,9 +119,9 @@ function convert() {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // 1. ตรวจสอบ WBC Differential (ข้ามบรรทัด NRC / 100 WBC)
+        // 1. ตรวจสอบ WBC Differential (ข้ามบรรทัด NRC เพื่อไม่ให้เลขกวนกัน)
         if (line.includes("WBC Differential") || Object.keys(diffMap).some(k => line.includes(k))) {
-            if (!line.includes("NRC")) { // ป้องกันเลข 1 จาก NRC
+            if (!line.includes("NRC")) { 
                 for (const k in diffMap) {
                     if (line.includes(k)) {
                         const val = extractValue(line);
@@ -76,17 +131,21 @@ function convert() {
             }
         }
 
-        // 2. ตรวจสอบ Labs ทั่วไป
+        // 2. ตรวจสอบ Labs ทั่วไปตามแมพที่ตั้งไว้
         for (const key in labMap) {
             if (line.includes(key)) {
-                // ป้องกัน WBC ชนกับหัวข้อ Differential หรือ NRC
+                // ข้ามถ้าเป็นหัวข้อ WBC Differential หรือบรรทัด NRC
                 if (key === "WBC" && (line.includes("Differential") || line.includes("NRC"))) continue;
+                // ข้าม Creatinine ถ้าเป็นปัสสาวะ (Urine)
                 if (key === "Creatinine" && line.includes("Urine")) continue;
-                if (key === "Protein" && !line.startsWith("Protein") && !line.includes("- Protein")) continue;
+                // แยก Protein เลือดออกจาก UA Prot (UA มักมีเครื่องหมาย - นำหน้าในบาง Format)
+                if (key === "Protein" && !line.startsWith("Protein") && !line.includes("- Protein") && !line.includes("Total Protein")) continue;
+                // ป้องกัน TCO2 ซ้ำกับ CO2
+                if (key === "CO2" && line.includes("TCO2")) continue;
 
                 let val = extractValue(line);
 
-                // ถ้าบรรทัดเดียวไม่มีเลข ลองดูบรรทัดถัดไป
+                // ถ้าบรรทัดที่เจอชื่อแล็บไม่มีตัวเลข ให้ลองดูบรรทัดถัดไป
                 if (!val && lines[i+1]) {
                     val = extractValue(lines[i+1]);
                 }
@@ -94,12 +153,13 @@ function convert() {
                 if (val) {
                     const label = labMap[key];
                     if (label === "WBC") {
-                        // ลบเครื่องหมายบวกหรือ comma ออกก่อนแปลงเป็นตัวเลข
+                        // ล้าง comma/บวก และแปลงเป็นตัวเลข
                         let num = parseFloat(val.replace(/[+,]/g, ''));
-                        // Logic เดิม: ถ้ามาเป็น 5.0 -> 5000, ถ้ามาเป็น 5030 -> 5030
+                        // ปรับให้เป็นหลักพันเสมอ (ถ้ามา 4.3 -> 4300, ถ้ามา 5030 -> 5030)
                         if (num < 100) num *= 1000;
                         wbcVal = Math.round(num);
                     } else {
+                        // เก็บค่าแล็บลง Map (เอาค่าแรกที่เจอ)
                         if (!results.has(label)) {
                             results.set(label, val);
                         }
@@ -109,10 +169,10 @@ function convert() {
         }
     }
 
-    // --- ส่วนการแสดงผล ---
+    // --- การจัดรูปแบบการแสดงผล (Formatting) ---
     let finalOutput = [];
 
-    // WBC & Diff
+    // ใส่ WBC และ Differential ก่อนเพื่อน
     if (wbcVal) {
         const order = ["N", "L", "M", "E", "B"];
         const diffParts = order.filter(k => diff[k]).map(k => `${k}${diff[k]}%`);
@@ -120,10 +180,14 @@ function convert() {
         finalOutput.push(diffText ? `WBC ${wbcVal} (${diffText})` : `WBC ${wbcVal}`);
     }
 
+    // ลำดับการแสดงผลที่ต้องการ
     const displayOrder = [
-        "Hb", "Hct", "Plt", "BUN", "Cr", "eGFR",
-        "Na", "K", "Cl", "TCO2", "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
-        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", "PT", "aPTT", "INR"
+        "Hb", "Hct", "Plt", 
+        "BUN", "Cr", "eGFR",
+        "Na", "K", "Cl", "TCO2",
+        "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
+        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood",
+        "PT", "aPTT", "INR"
     ];
 
     displayOrder.forEach(label => {
@@ -132,8 +196,15 @@ function convert() {
         }
     });
 
-    // แสดงผลด้วย comma separator
-    document.getElementById("output").textContent = finalOutput.join(", ");
+    // เงื่อนไขพิเศษ: INR จะแสดงก็ต่อเมื่อมีผล PT มาด้วยเท่านั้น
+    let finalStr = finalOutput.join(", ");
+    if (!results.has("PT")) {
+        // ใช้ Regex ลบ INR ออกถ้าไม่มี PT
+        finalStr = finalStr.replace(/INR [\d.]+(, )?/, "").replace(/, $/, "");
+    }
+
+    // แสดงผลลัพธ์ลงบนหน้าจอ
+    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่สามารถแปลงได้";
 }
 </script>
 
