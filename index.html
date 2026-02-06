@@ -50,7 +50,6 @@ const labMap = {
     // Renal
     "Blood Urea Nitrogen": "BUN",
     "Creatinine": "Cr",
-    "eGFR": "eGFR",
 
     // LFT
     "Total Protein": "TP",
@@ -80,32 +79,67 @@ const labMap = {
     "INR": "INR",
 
     // Other
-    "Lactate": "Lactate",
-    "CPK": "CPK"
+    "Lactate": "Lactate"
+};
+
+// WBC differential storage
+const diffMap = {
+    "Neutrophil": "N",
+    "Lymphocyte": "L",
+    "Monocyte": "M",
+    "Eosinophil": "E",
+    "Basophil": "B"
 };
 
 function convert() {
     const text = document.getElementById("input").value;
-    const lines = text
-        .split(/\r?\n/)
-        .map(l => l.trim())
-        .filter(Boolean);
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
     let result = [];
+    let wbcValue = null;
+    let diff = {};
 
     for (let i = 0; i < lines.length - 1; i++) {
-        const name = lines[i].replace(/^-\s*/, "");
+        const name = lines[i];
 
+        // 🔹 WBC differential
+        if (name.includes("WBC Differential")) {
+            for (const k in diffMap) {
+                if (name.includes(k)) {
+                    const m = lines[i + 1].match(/(\d+(\.\d+)?)/);
+                    if (m) diff[diffMap[k]] = m[1];
+                }
+            }
+            continue;
+        }
+
+        // 🔹 Other labs
         const key = Object.keys(labMap).find(k => name.includes(k));
         if (key) {
-            const next = lines[i + 1];
-            if (!next.includes("ไม่พบผล")) {
-                const m = next.match(/-?\d+(\.\d+)?/);
-                if (m) {
+            const m = lines[i + 1].match(/-?\d+(\.\d+)?/);
+            if (m) {
+                if (labMap[key] === "WBC") {
+                    wbcValue = m[0];
+                } else {
                     result.push(`${labMap[key]} ${m[0]}`);
                 }
             }
         }
+    }
+
+    // ⭐ Combine WBC + differential
+    if (wbcValue) {
+        const order = ["N", "L", "M", "E", "B"];
+        const diffText = order
+            .filter(k => diff[k])
+            .map(k => `${k}${diff[k]}%`)
+            .join(", ");
+
+        result.unshift(
+            diffText
+                ? `WBC ${wbcValue} (${diffText})`
+                : `WBC ${wbcValue}`
+        );
     }
 
     // ⭐ INR ต้องมี PT
@@ -114,8 +148,7 @@ function convert() {
         result = result.filter(r => !r.startsWith("INR "));
     }
 
-    document.getElementById("output").textContent =
-        result.join(" ");
+    document.getElementById("output").textContent = result.join(" ");
 }
 </script>
 
