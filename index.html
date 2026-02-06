@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Lab Converter</title>
+
 <style>
 body {
     font-family: Arial, sans-serif;
@@ -29,6 +30,7 @@ pre {
 </head>
 
 <body>
+
 <h2>Lab Text → One-line Summary</h2>
 
 <textarea id="input" placeholder="Paste lab text here..."></textarea>
@@ -39,22 +41,30 @@ pre {
 
 <script>
 const labMap = {
+    // CBC
     "Hemoglobin": "Hb",
     "Hematocrit": "Hct",
-    "WBC Count": "WBC",
-    "Platelet Count": "Plt",
+    "WBC": "WBC",
+    "Platelet": "Plt",
 
+    // Renal
     "Blood Urea Nitrogen": "BUN",
     "Creatinine": "Cr",
+    "eGFR": "eGFR",
 
+    // LFT
     "Total Protein": "TP",
     "Albumin": "Alb",
-    "Globulin": "Glb",
-    "Direct Bilirubin": "DB",
-    "Total Bilirubin": "TB",
+    "Globulin": "Glob",
+    "Direct Bilirubin": "DBili",
+    "Total Bilirubin": "TBili",
     "Alkaline Phosphatase": "ALP",
-    "SGPT2 (ALT)": "ALT",
+    "SGOT": "AST",
+    "AST": "AST",
+    "SGPT": "ALT",
+    "ALT": "ALT",
 
+    // Electrolyte / Mineral
     "Sodium": "Na",
     "Potassium": "K",
     "Chloride": "Cl",
@@ -63,31 +73,45 @@ const labMap = {
     "Phosphorus": "Phos",
     "Magnesium": "Mg",
 
-    "Lactate": "Lactate",
-
+    // Coagulation
     "PT": "PT",
     "APTT": "aPTT",
     "aPTT": "aPTT",
     "INR": "INR",
+
+    // Other
+    "Lactate": "Lactate",
+    "CPK": "CPK"
 };
 
 function convert() {
     const text = document.getElementById("input").value;
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const result = [];
+    const lines = text
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(Boolean);
+
+    let result = [];
 
     for (let i = 0; i < lines.length - 1; i++) {
         const name = lines[i].replace(/^-\s*/, "");
 
-        if (labMap[name]) {
+        const key = Object.keys(labMap).find(k => name.includes(k));
+        if (key) {
             const next = lines[i + 1];
             if (!next.includes("ไม่พบผล")) {
-                const m = next.match(/([\d,.]+)/);
+                const m = next.match(/-?\d+(\.\d+)?/);
                 if (m) {
-                    result.push(`${labMap[name]} ${m[1].replace(/,/g, "")}`);
+                    result.push(`${labMap[key]} ${m[0]}`);
                 }
             }
         }
+    }
+
+    // ⭐ INR ต้องมี PT
+    const hasPT = result.some(r => r.startsWith("PT "));
+    if (!hasPT) {
+        result = result.filter(r => !r.startsWith("INR "));
     }
 
     document.getElementById("output").textContent =
