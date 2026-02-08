@@ -3,29 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab & Vital Sign Converter (No SpO2)</title>
+    <title>Lab & Vital Sign Converter + Copy</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 950px; margin: 20px auto; padding: 20px; color: #333; line-height: 1.5; }
         h2 { color: #1a73e8; border-bottom: 2px solid #e8eaed; padding-bottom: 10px; }
         textarea { width: 100%; height: 300px; font-family: 'Consolas', monospace; padding: 15px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; background: #fdfdfd; }
         textarea:focus { border-color: #1a73e8; outline: none; }
-        button { padding: 14px 30px; font-size: 16px; margin-top: 15px; cursor: pointer; background: #1a73e8; color: white; border: none; border-radius: 6px; font-weight: bold; width: 100%; transition: 0.2s; }
-        button:hover { background: #1557b0; }
-        pre { background: #f1f3f4; padding: 20px; margin-top: 20px; white-space: pre-wrap; border-radius: 8px; border-left: 6px solid #1a73e8; font-size: 16px; font-weight: 500; color: #202124; min-height: 50px; }
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        button { flex: 1; padding: 14px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; transition: 0.2s; color: white; }
+        .btn-convert { background: #1a73e8; }
+        .btn-convert:hover { background: #1557b0; }
+        .btn-copy { background: #5f6368; }
+        .btn-copy:hover { background: #4a4d51; }
+        .btn-copy.copied { background: #28a745 !important; }
+        pre { background: #f1f3f4; padding: 20px; margin-top: 20px; white-space: pre-wrap; border-radius: 8px; border-left: 6px solid #1a73e8; font-size: 16px; font-weight: 500; color: #202124; min-height: 50px; position: relative; }
         .label-hint { font-size: 0.85em; color: #666; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <h2>Lab & Vital Sign Converter</h2>
-<div class="label-hint">วางข้อมูลแล็บและ Vital Sign ลงในช่อง (จะไม่แสดง SpO2 และ Nasal Cannula ในผลลัพธ์)</div>
+<div class="label-hint">วางข้อมูล Lab และ Vital Sign (ระบบจะจัดลำดับ CBC ใหม่และตัด SpO2 ออกให้)</div>
 <textarea id="input" placeholder="ตัวอย่าง:
-36.6	92	20	100	สายออกซิเจนทางจมูก	203/96
+36.6	92	20	100	Nasal Cannula	203/96
 Hemoglobin 8.6
-WBC Count 5,030
-TCO2 17 (21-32)"></textarea>
+WBC Count 5,030"></textarea>
 
-<button onclick="convert()">Convert to Summary</button>
+<div class="btn-group">
+    <button class="btn-convert" onclick="convert()">Convert to Summary</button>
+    <button id="copyBtn" class="btn-copy" onclick="copyToClipboard()">Copy Result</button>
+</div>
 
 <pre id="output"></pre>
 
@@ -34,7 +41,7 @@ function convert() {
     let rawText = document.getElementById("input").value;
     let textForLab = rawText;
 
-    // 1. ลบช่วงค่าปกติออกก่อนเพื่อความแม่นยำ (ป้องกัน TCO2 เพี้ยน)
+    // ลบช่วงค่าปกติออกก่อนเพื่อความแม่นยำ
     textForLab = textForLab.replace(/\([^)]*\)/g, ' '); 
     textForLab = textForLab.replace(/\[[^\]]*\]/g, ' ');
     textForLab = textForLab.replace(/,/g, '');
@@ -42,15 +49,13 @@ function convert() {
     const results = {};
     const diff = {};
 
-    // --- ส่วนที่ 1: Vital Sign Parser (ไม่เก็บ SpO2) ---
-    // ค้นหา pattern: [BT] [HR] [RR] [SpO2] ... [BP]
+    // --- ส่วนที่ 1: Vital Sign Parser (ตัด SpO2) ---
     const vsRegex = /(\d{2}\.\d)\s+(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s+.*?\s+(\d{2,3}\/\d{2,3})/;
     const vsMatch = rawText.match(vsRegex);
     if (vsMatch) {
         results["BT"] = vsMatch[1];
         results["HR"] = vsMatch[2];
         results["RR"] = vsMatch[3];
-        // vsMatch[4] คือ SpO2 (ข้ามไป ไม่เก็บ)
         results["BP"] = vsMatch[5];
     }
 
@@ -83,10 +88,8 @@ function convert() {
         { key: "Direct Bilirubin", label: "DB" },
         { key: "Total Bilirubin", label: "TB" },
         { key: "Alkaline Phosphatase", label: "ALP" },
-        { key: "SGOT", label: "AST" },
-        { key: "AST", label: "AST" },
-        { key: "SGPT", label: "ALT" },
-        { key: "ALT", label: "ALT" },
+        { key: "SGOT", label: "AST" }, { key: "AST", label: "AST" },
+        { key: "SGPT", label: "ALT" }, { key: "ALT", label: "ALT" },
         { key: "Spgr", label: "sp.gr." },
         { key: "pH", label: "pH" },
         { key: "PT", label: "PT" },
@@ -119,13 +122,11 @@ function convert() {
         }
     }
 
-    // --- ส่วนที่ 5: การจัดลำดับ Output ---
+    // --- ส่วนที่ 5: จัดลำดับ Output (Hb, Hct, WBC, Plt) ---
     let outputArr = [];
-
-    // ลำดับการแสดงผล: BT, HR, RR, BP (ไม่เอา SpO2) -> CBC -> อื่นๆ
     const displayOrder = [
-        "BT", "HR", "RR", "BP",         // Vital Signs (Removed SpO2)
-        "Hb", "Hct", "WBC", "Plt",      // CBC (เรียงตามสั่ง)
+        "BT", "HR", "RR", "BP", 
+        "Hb", "Hct", "WBC", "Plt", 
         "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2",
         "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
         "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", 
@@ -144,13 +145,30 @@ function convert() {
         }
     });
 
-    // เงื่อนไข: INR ต้องมี PT
     let finalStr = outputArr.join(", ");
     if (!results["PT"]) {
         finalStr = finalStr.replace(/INR [\d.]+(, )?/, "").replace(/, $/, "");
     }
 
-    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่ต้องการแปลง";
+    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูล";
+}
+
+// ฟังก์ชันสำหรับปุ่ม Copy
+function copyToClipboard() {
+    const text = document.getElementById("output").textContent;
+    if (!text || text === "ไม่พบข้อมูล") return;
+
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById("copyBtn");
+        const originalText = btn.textContent;
+        btn.textContent = "Copied!";
+        btn.classList.add("copied");
+
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.classList.remove("copied");
+        }, 2000);
+    });
 }
 </script>
 
