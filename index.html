@@ -3,28 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Converter Pro (Ultra Precision)</title>
+    <title>Lab & Vital Sign Converter (No SpO2)</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 900px; margin: 20px auto; padding: 20px; color: #333; line-height: 1.5; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 950px; margin: 20px auto; padding: 20px; color: #333; line-height: 1.5; }
         h2 { color: #1a73e8; border-bottom: 2px solid #e8eaed; padding-bottom: 10px; }
         textarea { width: 100%; height: 300px; font-family: 'Consolas', monospace; padding: 15px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; background: #fdfdfd; }
         textarea:focus { border-color: #1a73e8; outline: none; }
         button { padding: 14px 30px; font-size: 16px; margin-top: 15px; cursor: pointer; background: #1a73e8; color: white; border: none; border-radius: 6px; font-weight: bold; width: 100%; transition: 0.2s; }
         button:hover { background: #1557b0; }
-        pre { background: #f1f3f4; padding: 20px; margin-top: 20px; white-space: pre-wrap; border-radius: 8px; border-left: 6px solid #1a73e8; font-size: 16px; font-weight: 500; color: #202124; }
+        pre { background: #f1f3f4; padding: 20px; margin-top: 20px; white-space: pre-wrap; border-radius: 8px; border-left: 6px solid #1a73e8; font-size: 16px; font-weight: 500; color: #202124; min-height: 50px; }
         .label-hint { font-size: 0.85em; color: #666; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
-<h2>Lab Text → One-line Summary</h2>
-<div class="label-hint">วางผลแล็บทั้งหมดลงในช่องด้านล่าง (รองรับ CBC, Chem, Electrolyte, LFT, UA, Coag)</div>
-<textarea id="input" placeholder="ตัวอย่างผลแล็บ:
+<h2>Lab & Vital Sign Converter</h2>
+<div class="label-hint">วางข้อมูลแล็บและ Vital Sign ลงในช่อง (จะไม่แสดง SpO2 และ Nasal Cannula ในผลลัพธ์)</div>
+<textarea id="input" placeholder="ตัวอย่าง:
+36.6	92	20	100	สายออกซิเจนทางจมูก	203/96
+Hemoglobin 8.6
 WBC Count 5,030
-TCO2 17 (21 - 32)
-Sodium 141 (135 - 145)
-Protein 1+
-..."></textarea>
+TCO2 17 (21-32)"></textarea>
 
 <button onclick="convert()">Convert to Summary</button>
 
@@ -32,31 +31,40 @@ Protein 1+
 
 <script>
 function convert() {
-    let text = document.getElementById("input").value;
+    let rawText = document.getElementById("input").value;
+    let textForLab = rawText;
 
-    // 1. [CRITICAL FIX] ลบช่วงค่าปกติ (Reference Range) ออกไปให้หมดก่อน
-    // ลบทุกอย่างที่อยู่ใน ( ) และ [ ] เพื่อไม่ให้ตัวเลขข้างใน (เช่น 21-32) มาหลอกโปรแกรม
-    text = text.replace(/\([^)]*\)/g, ' '); 
-    text = text.replace(/\[[^\]]*\]/g, ' ');
-    
-    // 2. ลบ Comma ในตัวเลข เช่น 5,030 -> 5030
-    text = text.replace(/,/g, '');
+    // 1. ลบช่วงค่าปกติออกก่อนเพื่อความแม่นยำ (ป้องกัน TCO2 เพี้ยน)
+    textForLab = textForLab.replace(/\([^)]*\)/g, ' '); 
+    textForLab = textForLab.replace(/\[[^\]]*\]/g, ' ');
+    textForLab = textForLab.replace(/,/g, '');
 
     const results = {};
     const diff = {};
 
-    // --- ส่วนที่ 1: ดึงค่า Differential (N, L, M, E, B) ---
+    // --- ส่วนที่ 1: Vital Sign Parser (ไม่เก็บ SpO2) ---
+    // ค้นหา pattern: [BT] [HR] [RR] [SpO2] ... [BP]
+    const vsRegex = /(\d{2}\.\d)\s+(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s+.*?\s+(\d{2,3}\/\d{2,3})/;
+    const vsMatch = rawText.match(vsRegex);
+    if (vsMatch) {
+        results["BT"] = vsMatch[1];
+        results["HR"] = vsMatch[2];
+        results["RR"] = vsMatch[3];
+        // vsMatch[4] คือ SpO2 (ข้ามไป ไม่เก็บ)
+        results["BP"] = vsMatch[5];
+    }
+
+    // --- ส่วนที่ 2: Differential Parser ---
     const diffMapping = { "Neutrophil": "N", "Lymphocyte": "L", "Monocyte": "M", "Eosinophil": "E", "Basophil": "B" };
     for (let key in diffMapping) {
-        // หาคำว่า Neutrophil แล้วเอาเลขที่ตามหลังมา (แต่ต้องไม่ใช่ NRC)
         const regex = new RegExp(key + "[^0-9]*(\\d+)", "i");
-        const match = text.match(regex);
-        if (match && !text.substring(match.index - 20, match.index).includes("NRC")) {
+        const match = textForLab.match(regex);
+        if (match && !textForLab.substring(match.index - 20, match.index).includes("NRC")) {
             diff[diffMapping[key]] = match[1];
         }
     }
 
-    // --- ส่วนที่ 2: ดึงค่า Lab หลัก (ใช้ Regex ค้นหาตัวเลขที่ตามหลังชื่อแล็บ) ---
+    // --- ส่วนที่ 3: Lab Parser ---
     const labDefinitions = [
         { key: "Hemoglobin", label: "Hb" },
         { key: "Hematocrit", label: "Hct" },
@@ -87,64 +95,62 @@ function convert() {
     ];
 
     labDefinitions.forEach(item => {
-        // หาชื่อแล็บ แล้วตามด้วยตัวเลข (หรือเลขติดทศนิยม)
-        // \b เพื่อให้หาคำนั้นเป๊ะๆ ไม่ให้ CO2 ไปทับ TCO2
         const regex = new RegExp("\\b" + item.key + "\\b[^0-9]*(\\d+\\.?\\d*)", "i");
-        const match = text.match(regex);
-        
+        const match = textForLab.match(regex);
         if (match) {
             let val = match[1];
-            // จัดการ WBC: ถ้ามาเป็น 5.03 -> 5030 | ถ้ามา 5030 -> 5030
             if (item.label === "WBC") {
                 let num = parseFloat(val);
                 if (num < 100) num *= 1000;
-                results[item.label] = Math.round(num);
+                results["WBC"] = Math.round(num);
             } else {
                 results[item.label] = val;
             }
         }
     });
 
-    // --- ส่วนที่ 3: ดึงค่า UA (Protein, Glu, Ketone, Blood) เพราะมีค่าเป็น 1+, 2+, Neg ---
+    // --- ส่วนที่ 4: UA Parser ---
     const uaKeys = { "Protein": "UA Prot", "Glucose": "UA Glu", "Ketone": "UA Ketone", "Blood": "UA Blood" };
     for (let key in uaKeys) {
-        // หาบรรทัดที่มี UA หรือบรรทัดที่ตามหลัง Spgr/pH
         const regex = new RegExp(key + "[^a-zA-Z0-9]*(Neg|neg|Positive|\\d\\+)", "i");
-        const match = text.match(regex);
+        const match = textForLab.match(regex);
         if (match) {
             results[uaKeys[key]] = match[1].toLowerCase() === "neg" ? "neg" : match[1];
         }
     }
 
-    // --- ส่วนที่ 4: จัดเรียงลำดับการแสดงผล ---
+    // --- ส่วนที่ 5: การจัดลำดับ Output ---
     let outputArr = [];
 
-    // WBC & Diff ก่อน
-    if (results["WBC"]) {
-        const dOrder = ["N", "L", "M", "E", "B"];
-        const dStr = dOrder.filter(k => diff[k]).map(k => k + diff[k] + "%").join(", ");
-        outputArr.push(dStr ? `WBC ${results["WBC"]} (${dStr})` : `WBC ${results["WBC"]}`);
-    }
-
-    const order = [
-        "Hb", "Hct", "Plt", "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2",
+    // ลำดับการแสดงผล: BT, HR, RR, BP (ไม่เอา SpO2) -> CBC -> อื่นๆ
+    const displayOrder = [
+        "BT", "HR", "RR", "BP",         // Vital Signs (Removed SpO2)
+        "Hb", "Hct", "WBC", "Plt",      // CBC (เรียงตามสั่ง)
+        "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2",
         "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
-        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", "PT", "aPTT", "INR"
+        "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", 
+        "PT", "aPTT", "INR"
     ];
 
-    order.forEach(lab => {
-        if (results[lab] && lab !== "WBC") {
-            outputArr.push(`${lab} ${results[lab]}`);
+    displayOrder.forEach(label => {
+        if (results[label]) {
+            if (label === "WBC") {
+                const dOrder = ["N", "L", "M", "E", "B"];
+                const dStr = dOrder.filter(k => diff[k]).map(k => k + diff[k] + "%").join(", ");
+                outputArr.push(dStr ? `WBC ${results["WBC"]} (${dStr})` : `WBC ${results["WBC"]}`);
+            } else {
+                outputArr.push(`${label} ${results[label]}`);
+            }
         }
     });
 
-    // เงื่อนไข: INR ต้องมี PT ถึงจะแสดง
+    // เงื่อนไข: INR ต้องมี PT
     let finalStr = outputArr.join(", ");
     if (!results["PT"]) {
         finalStr = finalStr.replace(/INR [\d.]+(, )?/, "").replace(/, $/, "");
     }
 
-    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่ต้องการแปลง กรุณาตรวจสอบข้อมูลนำเข้า";
+    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่ต้องการแปลง";
 }
 </script>
 
