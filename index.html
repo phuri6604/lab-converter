@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab & Vital Sign Converter + Copy</title>
+    <title>Lab Converter Pro + Clear Button</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 950px; margin: 20px auto; padding: 20px; color: #333; line-height: 1.5; }
         h2 { color: #1a73e8; border-bottom: 2px solid #e8eaed; padding-bottom: 10px; }
@@ -16,6 +16,8 @@
         .btn-copy { background: #5f6368; }
         .btn-copy:hover { background: #4a4d51; }
         .btn-copy.copied { background: #28a745 !important; }
+        .btn-clear { background: #d93025; }
+        .btn-clear:hover { background: #b71c1c; }
         pre { background: #f1f3f4; padding: 20px; margin-top: 20px; white-space: pre-wrap; border-radius: 8px; border-left: 6px solid #1a73e8; font-size: 16px; font-weight: 500; color: #202124; min-height: 50px; position: relative; }
         .label-hint { font-size: 0.85em; color: #666; margin-bottom: 5px; }
     </style>
@@ -23,15 +25,16 @@
 <body>
 
 <h2>Lab & Vital Sign Converter</h2>
-<div class="label-hint">วางข้อมูล Lab และ Vital Sign (ระบบจะจัดลำดับ CBC ใหม่และตัด SpO2 ออกให้)</div>
+<div class="label-hint">วางข้อมูล Lab และ Vital Sign (ระบบจะตัด SpO2 และ Nasal Cannula ออกให้อัตโนมัติ)</div>
 <textarea id="input" placeholder="ตัวอย่าง:
 36.6	92	20	100	Nasal Cannula	203/96
 Hemoglobin 8.6
 WBC Count 5,030"></textarea>
 
 <div class="btn-group">
-    <button class="btn-convert" onclick="convert()">Convert to Summary</button>
-    <button id="copyBtn" class="btn-copy" onclick="copyToClipboard()">Copy Result</button>
+    <button class="btn-convert" onclick="convert()">Convert</button>
+    <button id="copyBtn" class="btn-copy" onclick="copyToClipboard()">Copy</button>
+    <button class="btn-clear" onclick="clearAll()">Clear All</button>
 </div>
 
 <pre id="output"></pre>
@@ -150,22 +153,29 @@ function convert() {
         finalStr = finalStr.replace(/INR [\d.]+(, )?/, "").replace(/, $/, "");
     }
 
-    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูล";
+    document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่ต้องการแปลง";
 }
 
-// ฟังก์ชันสำหรับปุ่ม Copy
+// ฟังก์ชันล้างข้อมูล
+function clearAll() {
+    document.getElementById("input").value = "";
+    document.getElementById("output").textContent = "";
+    const copyBtn = document.getElementById("copyBtn");
+    copyBtn.textContent = "Copy";
+    copyBtn.classList.remove("copied");
+}
+
+// ฟังก์ชัน Copy
 function copyToClipboard() {
     const text = document.getElementById("output").textContent;
-    if (!text || text === "ไม่พบข้อมูล") return;
+    if (!text || text === "ไม่พบข้อมูลที่ต้องการแปลง") return;
 
     navigator.clipboard.writeText(text).then(() => {
         const btn = document.getElementById("copyBtn");
-        const originalText = btn.textContent;
         btn.textContent = "Copied!";
         btn.classList.add("copied");
-
         setTimeout(() => {
-            btn.textContent = originalText;
+            btn.textContent = "Copy";
             btn.classList.remove("copied");
         }, 2000);
     });
