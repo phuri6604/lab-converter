@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Converter Pro + Clear Button</title>
+    <title>Lab Converter Pro (ALT/Lactate Update)</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 950px; margin: 20px auto; padding: 20px; color: #333; line-height: 1.5; }
         h2 { color: #1a73e8; border-bottom: 2px solid #e8eaed; padding-bottom: 10px; }
@@ -25,11 +25,8 @@
 <body>
 
 <h2>Lab & Vital Sign Converter</h2>
-<div class="label-hint">วางข้อมูล Lab และ Vital Sign (ระบบจะตัด SpO2 และ Nasal Cannula ออกให้อัตโนมัติ)</div>
-<textarea id="input" placeholder="ตัวอย่าง:
-36.6	92	20	100	Nasal Cannula	203/96
-Hemoglobin 8.6
-WBC Count 5,030"></textarea>
+<div class="label-hint">รองรับ SGPT2, Lactate, TCO2 และ Vital Signs (ตัด SpO2)</div>
+<textarea id="input" placeholder="วางผลแล็บที่นี่..."></textarea>
 
 <div class="btn-group">
     <button class="btn-convert" onclick="convert()">Convert</button>
@@ -44,10 +41,11 @@ function convert() {
     let rawText = document.getElementById("input").value;
     let textForLab = rawText;
 
-    // ลบช่วงค่าปกติออกก่อนเพื่อความแม่นยำ
+    // 1. [CRITICAL] ล้าง Reference Range และ Tag [ High ] / [ Low ] ออกก่อน
     textForLab = textForLab.replace(/\([^)]*\)/g, ' '); 
     textForLab = textForLab.replace(/\[[^\]]*\]/g, ' ');
     textForLab = textForLab.replace(/,/g, '');
+    textForLab = textForLab.replace(/\*/g, ''); // ลบดาว ***
 
     const results = {};
     const diff = {};
@@ -85,14 +83,15 @@ function convert() {
         { key: "Potassium", label: "K" },
         { key: "Chloride", label: "Cl" },
         { key: "TCO2", label: "TCO2" },
-        { key: "Total Protein", label: "Prot" },
+        { key: "Lactate", label: "Lactate" },
+        { key: "Total Protein", label: "Protein" },
         { key: "Albumin", label: "Alb" },
-        { key: "Globulin", label: "Glob" },
+        { key: "Globulin", label: "Glb" },
         { key: "Direct Bilirubin", label: "DB" },
         { key: "Total Bilirubin", label: "TB" },
         { key: "Alkaline Phosphatase", label: "ALP" },
         { key: "SGOT", label: "AST" }, { key: "AST", label: "AST" },
-        { key: "SGPT", label: "ALT" }, { key: "ALT", label: "ALT" },
+        { key: "SGPT", label: "ALT" }, { key: "ALT", label: "ALT" }, { key: "SGPT2", label: "ALT" }, // รองรับ SGPT2
         { key: "Spgr", label: "sp.gr." },
         { key: "pH", label: "pH" },
         { key: "PT", label: "PT" },
@@ -125,13 +124,13 @@ function convert() {
         }
     }
 
-    // --- ส่วนที่ 5: จัดลำดับ Output (Hb, Hct, WBC, Plt) ---
+    // --- ส่วนที่ 5: จัดลำดับ Output ---
     let outputArr = [];
     const displayOrder = [
         "BT", "HR", "RR", "BP", 
         "Hb", "Hct", "WBC", "Plt", 
-        "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2",
-        "Prot", "Alb", "Glob", "TB", "DB", "ALP", "AST", "ALT",
+        "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2", "Lactate",
+        "Protein", "Alb", "Glb", "TB", "DB", "ALP", "AST", "ALT",
         "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", 
         "PT", "aPTT", "INR"
     ];
@@ -156,7 +155,6 @@ function convert() {
     document.getElementById("output").textContent = finalStr || "ไม่พบข้อมูลที่ต้องการแปลง";
 }
 
-// ฟังก์ชันล้างข้อมูล
 function clearAll() {
     document.getElementById("input").value = "";
     document.getElementById("output").textContent = "";
@@ -165,7 +163,6 @@ function clearAll() {
     copyBtn.classList.remove("copied");
 }
 
-// ฟังก์ชัน Copy
 function copyToClipboard() {
     const text = document.getElementById("output").textContent;
     if (!text || text === "ไม่พบข้อมูลที่ต้องการแปลง") return;
