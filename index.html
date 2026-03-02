@@ -25,7 +25,7 @@
 <body>
 
 <h2>Lab & Vital Sign Converter</h2>
-<div class="label-hint">วางผล LAB</div>
+<div class="label-hint">วางผล LAB (รวม Lipid Profile และ UA Microscopic)</div>
 <textarea id="input" placeholder="วางผลแล็บที่นี่..."></textarea>
 
 <div class="btn-group">
@@ -41,7 +41,7 @@ function convert() {
     let rawText = document.getElementById("input").value;
     let textForLab = rawText;
 
-    // 1. [CRITICAL] ล้าง Reference Range และ Tag ออกก่อน
+    // 1. ล้าง Reference Range และ Tag ออกก่อน
     textForLab = textForLab.replace(/\([^)]*\)/g, ' '); 
     textForLab = textForLab.replace(/\[[^\]]*\]/g, ' ');
     textForLab = textForLab.replace(/,/g, '');
@@ -87,6 +87,10 @@ function convert() {
         { key: "Calcium", label: "Ca" },
         { key: "Phosphorus", label: "P" },
         { key: "Magnesium", label: "Mg" },
+        { key: "Cholesterol", label: "TC" },
+        { key: "Triglyceride", label: "TG" },
+        { key: "HDL-Cholesterol", label: "HDL" },
+        { key: "LDL-Cholesterol", label: "LDL" },
         { key: "Total Protein", label: "Protein" },
         { key: "Albumin", label: "Alb" },
         { key: "Globulin", label: "Glb" },
@@ -117,7 +121,7 @@ function convert() {
         }
     });
 
-    // --- ส่วนที่ 4: UA Parser (Chemical & Microscopic) ---
+    // --- ส่วนที่ 4: UA Parser ---
     const uaKeys = { "Protein": "UA Prot", "Glucose": "UA Glu", "Ketone": "UA Ketone", "Blood": "UA Blood" };
     for (let key in uaKeys) {
         const regex = new RegExp(key + "[^a-zA-Z0-9]*(Neg|neg|Positive|\\d\\+)", "i");
@@ -127,7 +131,6 @@ function convert() {
         }
     }
 
-    // ดึงค่า RBC, WBC, Epithelial จาก Microscopic ปัสสาวะ
     const microRegex = /(RBC|WBC|Epitherial|Epithelial)\s*(\d+-?\d*)\s*\/HP/gi;
     let microMatch;
     while ((microMatch = microRegex.exec(rawText)) !== null) {
@@ -135,7 +138,7 @@ function convert() {
         let val = microMatch[2];
         if (key === "rbc") results["UA RBC"] = val;
         if (key === "wbc") results["UA WBC"] = val;
-        if (key.includes("epi")) results["UA Epi"] = val;
+        if (key.includes("epi")) results["Epi"] = val;
     }
 
     // --- ส่วนที่ 5: จัดลำดับ Output ---
@@ -143,10 +146,11 @@ function convert() {
     const displayOrder = [
         "BT", "HR", "RR", "BP", 
         "Hb", "Hct", "WBC", "Plt", 
-        "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2", "Ca", "P", "Mg", "Lactate",
+        "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2", "Ca", "P", "Mg", 
+        "TC", "TG", "HDL", "LDL", "Lactate",
         "Protein", "Alb", "Glb", "TB", "DB", "AST", "ALT", "ALP",
         "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", 
-        "UA RBC", "UA WBC", "UA Epi",
+        "UA RBC", "UA WBC", "Epi",
         "PT", "aPTT", "INR"
     ];
 
