@@ -96,7 +96,10 @@ function convert() {
         { key: "pH", label: "pH" },
         { key: "PT", label: "PT" },
         { key: "APTT", label: "aPTT" },
-        { key: "INR", label: "INR" }
+        { key: "INR", label: "INR" },
+        { key: "Calcium", label: "Ca" },
+        { key: "Phosphorus", label: "P" },
+        { key: "Magnesium", label: "Mg" }
     ];
 
     labDefinitions.forEach(item => {
@@ -132,7 +135,7 @@ function convert() {
         "BUN", "Cr", "eGFR", "Na", "K", "Cl", "TCO2", "Lactate",
         "Protein", "Alb", "Glb", "TB", "DB", "AST", "ALT", "ALP",
         "sp.gr.", "pH", "UA Prot", "UA Glu", "UA Ketone", "UA Blood", 
-        "PT", "aPTT", "INR"
+        "PT", "aPTT", "INR", "Ca", "P", "Mg"
     ];
 
     displayOrder.forEach(label => {
